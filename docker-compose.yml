@@ -1,0 +1,10 @@
+services:
+  portfolio:
+    build: ./portfolio
+    ports:
+      - "80:80"
+
+  yearbook:
+    build: ./java-app
+    ports:
+      - "8081:8081"

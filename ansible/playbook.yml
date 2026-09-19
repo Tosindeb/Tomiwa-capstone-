@@ -1,0 +1,76 @@
+---
+- name: Configure and Deploy Tomiwa Capstone Server
+  hosts: webservers
+  become: true
+
+  tasks:
+    - name: Update installed packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+
+    - name: Install Docker
+      ansible.builtin.dnf:
+        name: docker
+        state: present
+
+    - name: Create Docker CLI plugins directory
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: "0755"
+
+    - name: Install Docker Compose plugin
+      ansible.builtin.get_url:
+        url: https://github.com/docker/compose/releases/download/v5.5.0/docker-compose-linux-x86_64
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        mode: "0755"
+
+    - name: Install Docker Buildx plugin
+      ansible.builtin.get_url:
+        url: https://github.com/docker/buildx/releases/download/v0.29.1/buildx-v0.29.1.linux-amd64
+        dest: /usr/local/lib/docker/cli-plugins/docker-buildx
+        mode: "0755"
+
+    - name: Start and enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: /home/ec2-user/tomiwa-capstone
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: "0755"
+
+    - name: Copy portfolio application
+      ansible.builtin.copy:
+        src: ../portfolio/
+        dest: /home/ec2-user/tomiwa-capstone/portfolio/
+        owner: ec2-user
+        group: ec2-user
+        mode: preserve
+
+    - name: Copy Java application
+      ansible.builtin.copy:
+        src: ../java-app/
+        dest: /home/ec2-user/tomiwa-capstone/java-app/
+        owner: ec2-user
+        group: ec2-user
+        mode: preserve
+
+    - name: Copy Docker Compose file
+      ansible.builtin.copy:
+        src: ../docker-compose.yml
+        dest: /home/ec2-user/tomiwa-capstone/docker-compose.yml
+        owner: ec2-user
+        group: ec2-user
+        mode: "0644"
+
+    - name: Build and start application containers
+      ansible.builtin.command:
+        cmd: docker compose up -d --build
+        chdir: /home/ec2-user/tomiwa-capstone
