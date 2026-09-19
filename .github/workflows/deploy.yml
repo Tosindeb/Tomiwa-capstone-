@@ -1,0 +1,68 @@
+name: Tomiwa Capstone CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build Java application
+        run: mvn clean package
+        working-directory: java-app
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Get EC2 public IP
+        id: terraform-output
+        working-directory: terraform
+        run: echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Prepare SSH key and Ansible inventory
+        env:
+          EC2_IP: ${{ steps.terraform-output.outputs.ec2_ip }}
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/tom-key.pem
+          chmod 600 ~/.ssh/tom-key.pem
+          ssh-keyscan -H "$EC2_IP" >> ~/.ssh/known_hosts
+          printf "[webservers]\n%s ansible_user=ec2-user ansible_ssh_private_key_file=%s/.ssh/tom-key.pem\n" "$EC2_IP" "$HOME" > ansible/inventory.ini
+
+      - name: Deploy applications with Ansible
+        run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
